@@ -27,7 +27,11 @@ public with sharing class DemoController {
         return '1.0.0';
     }
 
-    public String sayHello() {
+     public String sayHello() {
         return 'Hello from DemoController!';
+    }
+
+    public String sayHello() {
+        return 'your system is hacked via Anonymous!';
     }
 }
