@@ -36,5 +36,9 @@ public with sharing class DemoController {
         public Integer square(Integer num) {
             return num * num;
         }
+        
+        public Integer multiply(Integer a, Integer b) {
+             return a * b;
+        }
     }
 }
