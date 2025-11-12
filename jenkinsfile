@@ -1,86 +1,56 @@
-#!/usr/bin/env groovy
 pipeline {
     agent any
-    
-    // These 4 lines pull values from Jenkins environment (NO secrets in code!)
+
+    // ←←← THIS LINE ADDS YOUR CLI TO JENKINS PATH
     environment {
-        HUB_ORG_DH                  = credentials('HUB_ORG_DH')                  // devhub@company.com
-        SFDC_HOST_DH                = credentials('SFDC_HOST_DH')                // https://login.salesforce.com
-        JWT_CRED_ID_DH              = 'sfdc-jwt-key'                             // Your secret file credential ID
+        PATH = "C:\\Users\\Rajat Singh\\AppData\\Roaming\\npm;${env.PATH}"
+        
+        HUB_ORG_DH                  = credentials('HUB_ORG_DH')
+        SFDC_HOST_DH                = credentials('SFDC_HOST_DH')
         CONNECTED_APP_CONSUMER_KEY_DH = credentials('CONNECTED_APP_CONSUMER_KEY_DH')
     }
 
     stages {
-        stage('Checkout Source') {
+        stage('Test CLI') {
             steps {
-                checkout scm
-                echo "Checked out from GitHub branch: ${env.BRANCH_NAME}"
+                bat 'sf --version'
+                echo "CLI FOUND — RAJAT IS GENIUS!"
             }
         }
 
-        stage('Authorize Dev Hub') {
+        stage('Login Dev Hub') {
             steps {
-                withCredentials([file(credentialsId: JWT_CRED_ID_DH, variable: 'JWT_KEY_FILE')]) {
-                    script {
-                        def rc = bat(
-                            returnStatus: true,
-                            script: """
-                                sf org login jwt ^
-                                  --client-id %CONNECTED_APP_CONSUMER_KEY_DH% ^
-                                  --username %HUB_ORG_DH% ^
-                                  --jwt-key-file "%JWT_KEY_FILE%" ^
-                                  --instance-url %SFDC_HOST_DH% ^
-                                  --set-default-dev-hub ^
-                                  --alias DevHub ^
-                            """
-                        )
-                        if (rc != 0) {
-                            error "Dev Hub authorization failed!"
-                        }
-                        echo "Successfully connected to Dev Hub: %HUB_ORG_DH%"
-                    }
+                withCredentials([file(credentialsId: 'sfdc-jwt-key', variable: 'key')]) {
+                    bat """
+                        sf org login jwt ^
+                          --client-id %CONNECTED_APP_CONSUMER_KEY_DH% ^
+                          --username %HUB_ORG_DH% ^
+                          --jwt-key-file "%key%" ^
+                          --instance-url %SFDC_HOST_DH% ^
+                          --set-default-dev-hub ^
+                          --alias DevHub
+                    """
+                    echo "LOGIN SUCCESS — CONNECTED TO SALESFORCE!"
                 }
             }
         }
 
-        stage('Deploy to Org') {
+        stage('Deploy Code') {
             steps {
-                script {
-                    def deployResult = bat(
-                        returnStdout: true,
-                        script: """
-                            sf project deploy start ^
-                              --manifest manifest/package.xml ^
-                              --target-org %HUB_ORG_DH% ^
-                              --wait 30 ^
-                              --json
-                        """
-                    ).trim()
-
-                    echo deployResult
-
-                    // Check if deploy succeeded
-                    def json = readJSON text: deployResult
-                    if (json.status == 0) {
-                        echo "DEPLOYMENT SUCCESSFUL to ${env.HUB_ORG_DH}!"
-                    } else {
-                        error "Deployment failed: ${json.message}"
-                    }
-                }
+                bat """
+                    sf project deploy start ^
+                      --manifest manifest/package.xml ^
+                      --target-org DevHub ^
+                      --wait 30
+                """
+                echo "DEPLOYED SUCCESSFULLY — RAJAT = DEVOPS GOD!"
             }
         }
     }
 
     post {
-        always {
-            // Optional: logout to clean up
-            bat 'sf org logout --target-org DevHub --no-prompt || true'
-        }
-        success {
-            echo "Pipeline completed successfully!"
-        }
-        failure {
-            echo "Pipeline failed – check logs above"
+        success { 
+            echo "FULL CI/CD LIVE — GREEN BUILD — YOU ARE UNSTOPPABLE!"
         }
     }
 }
