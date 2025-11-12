@@ -1,10 +1,8 @@
 pipeline {
     agent any
 
-    // ←←← THIS LINE ADDS YOUR CLI TO JENKINS PATH
     environment {
         PATH = "C:\\Users\\Rajat Singh\\AppData\\Roaming\\npm;${env.PATH}"
-        
         HUB_ORG_DH                  = credentials('HUB_ORG_DH')
         SFDC_HOST_DH                = credentials('SFDC_HOST_DH')
         CONNECTED_APP_CONSUMER_KEY_DH = credentials('CONNECTED_APP_CONSUMER_KEY_DH')
@@ -14,11 +12,11 @@ pipeline {
         stage('Test CLI') {
             steps {
                 bat 'sf --version'
-                echo "CLI FOUND — RAJAT IS GENIUS!"
+                echo "CLI READY — RAJAT IS KING"
             }
         }
 
-        stage('Login Dev Hub') {
+        stage('Login to DEV HUB (NOT SCRATCH)') {
             steps {
                 withCredentials([file(credentialsId: 'sfdc-jwt-key', variable: 'key')]) {
                     bat """
@@ -27,30 +25,33 @@ pipeline {
                           --username %HUB_ORG_DH% ^
                           --jwt-key-file "%key%" ^
                           --instance-url %SFDC_HOST_DH% ^
-                          --set-default-dev-hub ^
-                          --alias DevHub
+                          --set-alias MyDevHub ^
+                          --set-default
                     """
-                    echo "LOGIN SUCCESS — CONNECTED TO SALESFORCE!"
+                    echo "DEV HUB LOGIN SUCCESS — NO SCRATCH ORG"
                 }
             }
         }
 
-        stage('Deploy Code') {
+        stage('Deploy DIRECTLY to DEV HUB') {
             steps {
                 bat """
                     sf project deploy start ^
                       --manifest manifest/package.xml ^
-                      --target-org DevHub ^
+                      --target-org MyDevHub ^
                       --wait 30
                 """
-                echo "DEPLOYED SUCCESSFULLY — RAJAT = DEVOPS GOD!"
+                echo "DEPLOYED TO DEV HUB — NOT SCRATCH — 12 NOV 2025"
             }
         }
     }
 
     post {
         success { 
-            echo "FULL CI/CD LIVE — GREEN BUILD — YOU ARE UNSTOPPABLE!"
+            echo "DATA SIRF DEV HUB PAR GAYA — SCRATCH ORG KO CHHOD DIYA — RAJAT WON"
+        }
+        always {
+            bat 'sf org logout --target-org MyDevHub --no-prompt || true'
         }
     }
 }
