@@ -1,0 +1,87 @@
+#!/usr/bin/env groovy
+pipeline {
+    agent any
+    
+    // These 4 lines pull values from Jenkins environment (NO secrets in code!)
+    environment {
+        HUB_ORG_DH                  = credentials('HUB_ORG_DH')                  // devhub@company.com
+        SFDC_HOST_DH                = credentials('SFDC_HOST_DH')                // https://login.salesforce.com
+        JWT_CRED_ID_DH              = 'sfdc-jwt-key'                             // Your secret file credential ID
+        CONNECTED_APP_CONSUMER_KEY_DH = credentials('CONNECTED_APP_CONSUMER_KEY_DH')
+    }
+
+    stages {
+        stage('Checkout Source') {
+            steps {
+                checkout scm
+                echo "Checked out from GitHub branch: ${env.BRANCH_NAME}"
+            }
+        }
+
+        stage('Authorize Dev Hub') {
+            steps {
+                withCredentials([file(credentialsId: JWT_CRED_ID_DH, variable: 'JWT_KEY_FILE')]) {
+                    script {
+                        def rc = bat(
+                            returnStatus: true,
+                            script: """
+                                sf org login jwt ^
+                                  --client-id %CONNECTED_APP_CONSUMER_KEY_DH% ^
+                                  --username %HUB_ORG_DH% ^
+                                  --jwt-key-file "%JWT_KEY_FILE%" ^
+                                  --instance-url %SFDC_HOST_DH% ^
+                                  --set-default-dev-hub ^
+                                  --alias DevHub ^
+                                  --log-level warn
+                            """
+                        )
+                        if (rc != 0) {
+                            error "Dev Hub authorization failed!"
+                        }
+                        echo "Successfully connected to Dev Hub: %HUB_ORG_DH%"
+                    }
+                }
+            }
+        }
+
+        stage('Deploy to Org') {
+            steps {
+                script {
+                    def deployResult = bat(
+                        returnStdout: true,
+                        script: """
+                            sf project deploy start ^
+                              --manifest manifest/package.xml ^
+                              --target-org %HUB_ORG_DH% ^
+                              --wait 30 ^
+                              --json
+                        """
+                    ).trim()
+
+                    echo deployResult
+
+                    // Check if deploy succeeded
+                    def json = readJSON text: deployResult
+                    if (json.status == 0) {
+                        echo "DEPLOYMENT SUCCESSFUL to ${env.HUB_ORG_DH}!"
+                    } else {
+                        error "Deployment failed: ${json.message}"
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            // Optional: logout to clean up
+            bat 'sf org logout --target-org DevHub --no-prompt || true'
+        }
+        success {
+            echo "Pipeline completed successfully!"
+        }
+        failure {
+            echo "Pipeline failed – check logs above"
+        }
+    }
+}
