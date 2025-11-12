@@ -9,14 +9,14 @@ pipeline {
     }
 
     stages {
-        stage('Test CLI') {
+        stage('Checkout') {
             steps {
-                bat 'sf --version'
-                echo "CLI READY — RAJAT IS KING"
+                checkout scm
+                echo "CODE GITHUB SE AA GAYA — BRANCH: ${env.BRANCH_NAME}"
             }
         }
 
-        stage('Login to DEV HUB (NOT SCRATCH)') {
+        stage('Login Dev Hub') {
             steps {
                 withCredentials([file(credentialsId: 'sfdc-jwt-key', variable: 'key')]) {
                     bat """
@@ -25,33 +25,28 @@ pipeline {
                           --username %HUB_ORG_DH% ^
                           --jwt-key-file "%key%" ^
                           --instance-url %SFDC_HOST_DH% ^
-                          --set-alias MyDevHub ^
-                          --set-default
+                          --alias MyDevHub
                     """
-                    echo "DEV HUB LOGIN SUCCESS — NO SCRATCH ORG"
+                    bat 'sf config set target-org MyDevHub --global'
+                    echo "DEV HUB LOGIN + DEFAULT SET — 100% SUCCESS"
                 }
             }
         }
 
-        stage('Deploy DIRECTLY to DEV HUB') {
+        stage('Deploy to Dev Hub') {
             steps {
-                bat """
-                    sf project deploy start ^
-                      --manifest manifest/package.xml ^
-                      --target-org MyDevHub ^
-                      --wait 30
-                """
-                echo "DEPLOYED TO DEV HUB — NOT SCRATCH — 12 NOV 2025"
+                bat 'sf project deploy start --manifest manifest/package.xml --target-org MyDevHub --wait 60'
+                echo "12 NOV 2025 — DATA DEV HUB MEIN LIVE HO GAYA — RAJAT WON"
             }
         }
     }
 
     post {
         success { 
-            echo "DATA SIRF DEV HUB PAR GAYA — SCRATCH ORG KO CHHOD DIYA — RAJAT WON"
+            echo "RAJAT NE CI/CD COMPLETE KIYA — DEV HUB MEIN SAB KUCH LIVE — MENTOR SHOCK"
         }
-        always {
-            bat 'sf org logout --target-org MyDevHub --no-prompt || true'
+        always { 
+            bat 'sf org logout --target-org MyDevHub --no-prompt || true' 
         }
     }
 }
