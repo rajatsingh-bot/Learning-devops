@@ -32,7 +32,6 @@ pipeline {
                                   --instance-url %SFDC_HOST_DH% ^
                                   --set-default-dev-hub ^
                                   --alias DevHub ^
-                                  --log-level warn
                             """
                         )
                         if (rc != 0) {
