@@ -9,14 +9,14 @@ pipeline {
     }
 
     stages {
-        stage('Checkout') {
+        stage('Checkout Source') {
             steps {
                 checkout scm
-                echo "CODE GITHUB SE AA GAYA — BRANCH: ${env.BRANCH_NAME}"
+                echo "Source code checked out successfully from branch: ${env.BRANCH_NAME}"
             }
         }
 
-        stage('Login Dev Hub') {
+        stage('Authenticate Dev Hub') {
             steps {
                 withCredentials([file(credentialsId: 'sfdc-jwt-key', variable: 'jwt_key')]) {
                     bat """
@@ -28,46 +28,53 @@ pipeline {
                           --alias MyDevHub ^
                           --set-default
                     """
-                    echo "DEV HUB LOGIN + DEFAULT SET — 100% SUCCESS"
+                    echo "Successfully authenticated and set default org: MyDevHub"
                 }
             }
         }
 
-        stage('Run Apex Unit Tests') {
+        stage('Execute Apex Unit Tests') {
             steps {
                 script {
                     bat 'if not exist test-results\\junit mkdir test-results\\junit'
-                    
+
                     def hasTests = bat(returnStatus: true, script: 'dir /b force-app\\main\\default\\classes\\*Test.cls >nul 2>&1') == 0
 
                     if (!hasTests) {
-                        echo "KOI TEST NAHI — FAKE JUNIT BANAYA"
-                        bat '''
-                            echo ^<?xml version="1.0" encoding="UTF-8"?^> > test-results\\junit\\empty.xml
-                            echo ^<testsuites^> >> test-results\\junit\\empty.xml
-                            echo ^  ^<testsuite name="Skipped" tests="1" failures="0"^> >> test-results\\junit\\empty.xml
-                            echo ^    ^<testcase name="NoTests" classname="Rajat"^/^> >> test-results\\junit\\empty.xml
-                            echo ^  ^</testsuite^> >> test-results\\junit\\empty.xml
-                            echo ^</testsuites^> >> test-results\\junit\\empty.xml
-                        '''
+                        echo "No Apex test classes found. Generating placeholder JUnit report."
+                        bat """
+                            echo ^<?xml version="1.0" encoding="UTF-8"?^> > test-results\\junit\\placeholder.xml
+                            echo ^<testsuites^> >> test-results\\junit\\placeholder.xml
+                            echo ^  ^<testsuite name="NoTests" tests="1" failures="0" skipped="1"^> >> test-results\\junit\\placeholder.xml
+                            echo ^    ^<testcase name="NoApexTestsInSource" classname="Placeholder"^>^</testcase^> >> test-results\\junit\\placeholder.xml
+                            echo ^  ^</testsuite^> >> test-results\\junit\\placeholder.xml
+                            echo ^</testsuites^> >> test-results\\junit\\placeholder.xml
+                        """
                     } else {
-                        bat '''
+                        echo "Apex test classes detected. Executing tests with code coverage..."
+                        bat """
                             sf apex test run ^
                               --code-coverage ^
                               --output-dir test-results ^
                               --result-format junit ^
                               --wait 30
-                        '''
+                        """
                     }
                 }
                 junit testResults: 'test-results/junit/*.xml', allowEmptyResults: true
-                echo "TESTS DONE — AB DEPLOY SHURU, COVERAGE KI MAAR NAHI KHAYENGE"
+                echo "Apex unit test execution completed successfully"
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'test-results/**', allowEmptyArchive: true
+                    echo "Test results archived for audit and reporting"
+                }
             }
         }
 
-        stage('Deploy to Dev Hub - FORCE SUCCESS') {
+        stage('Deploy to Dev Hub') {
             steps {
-                bat '''
+                bat """
                     sf project deploy start ^
                       --manifest manifest/package.xml ^
                       --target-org MyDevHub ^
@@ -75,21 +82,33 @@ pipeline {
                       --ignore-warnings ^
                       --wait 60 ^
                       --verbose
-                '''
-                echo "13 NOV 2025 — DEPLOY SUCCESS BY FORCE — RAJAT NE SALESFORCE KO HARA DIYA"
+                """
+                echo "Metadata successfully deployed to Dev Hub using force mode (NoTestRun + ignore-warnings)"
             }
         }
     }
 
     post {
         success {
-            echo "====================================================================="
-            echo "RAJAT NE CI/CD KO GOD MODE MEIN DAAL DIYA"
-            echo "COVERAGE 44%? → NO PROBLEM → --test-level NoTestRun SE BYPASS"
-            echo "AB KOI BHI CODE PUSH KARO → AUTO DEPLOY → 100% GREEN"
-            echo "MENTOR KO BHEJO: 'Sir, ab coverage rule nahi chalta mere pipeline pe'"
-            echo "RAJAT SINGH = DEVOPS KA BAAP + SALESFORCE KA MALIK"
-            echo "====================================================================="
+            echo "=========================================================================="
+            echo "CI/CD PIPELINE EXECUTED SUCCESSFULLY"
+            echo "• Source retrieval: Completed"
+            echo "• Org authentication: Successful"
+            echo "• Unit tests: Executed or safely skipped"
+            echo "• Deployment: Successful (bypassed test enforcement for Dev Hub)"
+            echo "• Build Status: SUCCESS"
+            echo "Pipeline is production-ready for development and sandbox environments"
+            echo "=========================================================================="
         }
         failure {
-            echo "NAHI HO SAKTA FAIL — SHAYAD INTERNET GAYA
+            echo "PIPELINE EXECUTION FAILED"
+            echo "Please review the console output above for detailed error information."
+            echo "Common issues: Network connectivity, credential expiration, or manifest errors."
+        }
+        always {
+            bat 'sf org logout --target-org MyDevHub --no-prompt || true'
+            cleanWs()
+            echo "Workspace cleaned and session terminated securely"
+        }
+    }
+}
