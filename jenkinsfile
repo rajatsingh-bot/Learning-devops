@@ -3,20 +3,23 @@ pipeline {
 
     environment {
         PATH = "C:\\Users\\Rajat Singh\\AppData\\Roaming\\npm;${env.PATH}"
-        HUB_ORG_DH                  = credentials('HUB_ORG_DH')
-        SFDC_HOST_DH                = credentials('SFDC_HOST_DH')
-        CONNECTED_APP_CONSUMER_KEY_DH = credentials('CONNECTED_APP_CONSUMER_KEY_DH')
+
+        // Secure Jenkins credentials
+        HUB_ORG_DH                  = credentials('HUB_ORG_DH')                  // Dev Hub username/email
+        SFDC_HOST_DH                = credentials('SFDC_HOST_DH')                // e.g., https://login.salesforce.com
+        CONNECTED_APP_CONSUMER_KEY_DH = credentials('CONNECTED_APP_CONSUMER_KEY_DH') // Connected App consumer key
     }
 
     stages {
+
         stage('Checkout') {
             steps {
                 checkout scm
-                echo "CODE GITHUB SE AA GAYA — BRANCH: ${env.BRANCH_NAME}"
+                echo "✅ CODE GITHUB SE AA GAYA — BRANCH: ${env.BRANCH_NAME}"
             }
         }
 
-        stage('Login Dev Hub') {
+        stage('Login to Dev Hub') {
             steps {
                 withCredentials([file(credentialsId: 'sfdc-jwt-key', variable: 'key')]) {
                     bat """
@@ -25,28 +28,62 @@ pipeline {
                           --username %HUB_ORG_DH% ^
                           --jwt-key-file "%key%" ^
                           --instance-url %SFDC_HOST_DH% ^
-                          --alias MyDevHub
+                          --alias DevHub
                     """
-                    bat 'sf config set target-org MyDevHub --global'
-                    echo "DEV HUB LOGIN + DEFAULT SET — 100% SUCCESS"
+                    bat 'sf config set target-org DevHub --global'
+                    echo "🔐 DEV HUB LOGIN SUCCESS — ALIAS SET: DevHub"
                 }
             }
         }
 
-        stage('Deploy to Dev Hub') {
+        stage('Create Scratch Org') {
             steps {
-                bat 'sf project deploy start --manifest manifest/package.xml --target-org MyDevHub --wait 60'
-                echo "12 NOV 2025 — DATA DEV HUB MEIN LIVE HO GAYA — RAJAT WON"
+                bat 'sf org create scratch --definition-file config/project-scratch-def.json --alias CI_SCRATCH --set-default --duration-days 1 --wait 10'
+                echo "🧱 SCRATCH ORG CREATED SUCCESSFULLY — ALIAS: CI_SCRATCH"
+            }
+        }
+
+        stage('Push / Deploy Code to Scratch Org') {
+            steps {
+                bat 'sf project deploy start --manifest manifest/package.xml --target-org CI_SCRATCH --wait 30'
+                echo "🚀 DEPLOYMENT SUCCESSFUL TO SCRATCH ORG"
+            }
+        }
+
+        stage('Run Apex Unit Tests') {
+            steps {
+                bat 'sf apex run test --target-org CI_SCRATCH --result-format human --code-coverage --wait 10 --output-dir test-results'
+                echo "🧪 UNIT TESTS EXECUTED — CHECK test-results/ FOR REPORT"
+            }
+        }
+
+        stage('Export Test Report') {
+            steps {
+                bat 'sf apex run test --target-org CI_SCRATCH --result-format junit --code-coverage --wait 10 --output-dir test-results'
+                junit 'test-results/test-result-*.xml'
+                echo "📊 TEST RESULTS PUBLISHED IN JENKINS UI"
+            }
+        }
+
+        stage('Delete Scratch Org') {
+            steps {
+                bat 'sf org delete scratch --target-org CI_SCRATCH --no-prompt'
+                echo "🧹 SCRATCH ORG CLEANUP DONE"
             }
         }
     }
 
     post {
-        success { 
-            echo "RAJAT NE CI/CD COMPLETE KIYA — DEV HUB MEIN SAB KUCH LIVE — MENTOR SHOCK"
+        success {
+            echo "🎉 RAJAT’S CI/CD PIPELINE SUCCESS: CODE ✅ TEST ✅ CLEANUP ✅"
         }
-        always { 
-            bat 'sf org logout --target-org MyDevHub --no-prompt || true' 
+        failure {
+            echo "❌ PIPELINE FAILED — CHECK LOGS ABOVE FOR ERRORS"
+        }
+        always {
+            bat 'sf org logout --target-org DevHub --no-prompt || true'
+            echo "🔒 LOGGED OUT FROM DEV HUB"
         }
     }
 }
+
