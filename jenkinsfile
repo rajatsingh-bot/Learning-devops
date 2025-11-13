@@ -5,8 +5,8 @@ pipeline {
         PATH = "C:\\Users\\Rajat Singh\\AppData\\Roaming\\npm;${env.PATH}"
 
         // Secure Jenkins credentials
-        HUB_ORG_DH                  = credentials('HUB_ORG_DH')                  // Dev Hub username/email
-        SFDC_HOST_DH                = credentials('SFDC_HOST_DH')                // e.g., https://login.salesforce.com
+        HUB_ORG_DH                   = credentials('HUB_ORG_DH')                   // Dev Hub username/email
+        SFDC_HOST_DH                 = credentials('SFDC_HOST_DH')                 // e.g., https://login.salesforce.com
         CONNECTED_APP_CONSUMER_KEY_DH = credentials('CONNECTED_APP_CONSUMER_KEY_DH') // Connected App consumer key
     }
 
@@ -15,7 +15,7 @@ pipeline {
         stage('Checkout') {
             steps {
                 checkout scm
-                echo "✅ CODE GITHUB SE AA GAYA — BRANCH: ${env.BRANCH_NAME}"
+                echo "CODE CHECKED OUT FROM GITHUB - BRANCH: ${env.BRANCH_NAME}"
             }
         }
 
@@ -31,7 +31,7 @@ pipeline {
                           --alias DevHub
                     """
                     bat 'sf config set target-org DevHub --global'
-                    echo "🔐 DEV HUB LOGIN SUCCESS — ALIAS SET: DevHub"
+                    echo "DEV HUB LOGIN SUCCESSFUL - ALIAS SET: DevHub"
                 }
             }
         }
@@ -39,51 +39,52 @@ pipeline {
         stage('Create Scratch Org') {
             steps {
                 bat 'sf org create scratch --definition-file config/project-scratch-def.json --alias CI_SCRATCH --set-default --duration-days 1 --wait 10'
-                echo "🧱 SCRATCH ORG CREATED SUCCESSFULLY — ALIAS: CI_SCRATCH"
+                echo "SCRATCH ORG CREATED SUCCESSFULLY - ALIAS: CI_SCRATCH"
             }
         }
 
-        stage('Push / Deploy Code to Scratch Org') {
+        stage('Deploy Code to Scratch Org') {
             steps {
                 bat 'sf project deploy start --manifest manifest/package.xml --target-org CI_SCRATCH --wait 30'
-                echo "🚀 DEPLOYMENT SUCCESSFUL TO SCRATCH ORG"
+                echo "DEPLOYMENT SUCCESSFUL TO SCRATCH ORG"
             }
         }
 
-        stage('Run Apex Unit Tests') {
+        stage('Run Apex Unit Tests (Human Output)') {
             steps {
                 bat 'sf apex run test --target-org CI_SCRATCH --result-format human --code-coverage --wait 10 --output-dir test-results'
-                echo "🧪 UNIT TESTS EXECUTED — CHECK test-results/ FOR REPORT"
+                echo "UNIT TESTS EXECUTED - SEE test-results DIRECTORY"
             }
         }
 
-        stage('Export Test Report') {
+        stage('Export Test Report (JUnit Format)') {
             steps {
                 bat 'sf apex run test --target-org CI_SCRATCH --result-format junit --code-coverage --wait 10 --output-dir test-results'
                 junit 'test-results/test-result-*.xml'
-                echo "📊 TEST RESULTS PUBLISHED IN JENKINS UI"
+                echo "TEST RESULTS PUBLISHED IN JENKINS"
             }
         }
 
         stage('Delete Scratch Org') {
             steps {
                 bat 'sf org delete scratch --target-org CI_SCRATCH --no-prompt'
-                echo "🧹 SCRATCH ORG CLEANUP DONE"
+                echo "SCRATCH ORG CLEANUP COMPLETED"
             }
         }
     }
 
     post {
         success {
-            echo "🎉 RAJAT’S CI/CD PIPELINE SUCCESS: CODE ✅ TEST ✅ CLEANUP ✅"
+            echo "PIPELINE SUCCESSFUL: CODE DEPLOYED, TESTED, AND CLEANED UP"
         }
         failure {
-            echo "❌ PIPELINE FAILED — CHECK LOGS ABOVE FOR ERRORS"
+            echo "PIPELINE FAILED - CHECK STAGE LOGS ABOVE"
         }
         always {
             bat 'sf org logout --target-org DevHub --no-prompt || true'
-            echo "🔒 LOGGED OUT FROM DEV HUB"
+            echo "LOGGED OUT FROM DEV HUB"
         }
     }
 }
+
 
