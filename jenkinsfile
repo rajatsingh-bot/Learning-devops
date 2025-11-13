@@ -2,97 +2,93 @@ pipeline {
     agent any
 
     environment {
-        NODE_HOME = "C:\\Users\\Rajat Singh\\AppData\\Roaming\\npm"
-        PATH = "${env.NODE_HOME};${env.PATH}"
-        HUB_ORG_DH = credentials('HUB_ORG_DH')                     // Dev Hub username/email
-        SFDC_HOST_DH = credentials('SFDC_HOST_DH')                 // e.g. https://login.salesforce.com
+        PATH = "C:\\Users\\Rajat Singh\\AppData\\Roaming\\npm;${env.PATH}"
+        HUB_ORG_DH                    = credentials('HUB_ORG_DH')
+        SFDC_HOST_DH                  = credentials('SFDC_HOST_DH')
         CONNECTED_APP_CONSUMER_KEY_DH = credentials('CONNECTED_APP_CONSUMER_KEY_DH')
     }
 
     stages {
-
         stage('Checkout') {
             steps {
                 checkout scm
-                echo "✅ Code checked out from GitHub — branch: ${env.BRANCH_NAME}"
+                echo "CODE GITHUB SE AA GAYA — BRANCH: ${env.BRANCH_NAME}"
             }
         }
 
-        stage('Login to Dev Hub') {
+        stage('Login Dev Hub') {
             steps {
-                withCredentials([file(credentialsId: 'sfdc-jwt-key', variable: 'JWT_KEY')]) {
-                    powershell """
-                        sf org login jwt `
-                            --client-id $env:CONNECTED_APP_CONSUMER_KEY_DH `
-                            --username $env:HUB_ORG_DH `
-                            --jwt-key-file "$env:JWT_KEY" `
-                            --instance-url $env:SFDC_HOST_DH `
-                            --alias DevHub `
-                            --set-default-dev-hub
+                withCredentials([file(credentialsId: 'sfdc-jwt-key', variable: 'jwt_key')]) {
+                    bat """
+                        sf org login jwt ^
+                          --client-id %CONNECTED_APP_CONSUMER_KEY_DH% ^
+                          --username %HUB_ORG_DH% ^
+                          --jwt-key-file "%jwt_key%" ^
+                          --instance-url %SFDC_HOST_DH% ^
+                          --alias MyDevHub ^
+                          --set-default
                     """
-                    echo "✅ Dev Hub login successful - alias set: DevHub"
+                    echo "DEV HUB LOGIN + DEFAULT SET — 100% SUCCESS"
                 }
-            }
-        }
-
-        stage('Create Scratch Org') {
-            steps {
-                powershell """
-                    sf org create scratch `
-                        --definition-file config/project-scratch-def.json `
-                        --alias CI_SCRATCH `
-                        --target-dev-hub DevHub `
-                        --set-default `
-                        --duration-days 1 `
-                        --wait 10
-                """
-                echo "✅ Scratch org created successfully - alias: CI_SCRATCH"
-            }
-        }
-
-        stage('Deploy Code to Scratch Org') {
-            steps {
-                powershell 'sf project deploy start --manifest manifest/package.xml --target-org CI_SCRATCH --wait 60'
-                echo "✅ Code deployed to scratch org"
             }
         }
 
         stage('Run Apex Unit Tests') {
             steps {
-                powershell 'sf apex run test --target-org CI_SCRATCH --test-level RunLocalTests --wait 20'
-                echo "✅ Apex unit tests executed"
+                script {
+                    // Run all local tests and generate JUnit report
+                    bat '''
+                        sf apex test run \
+                          --tests * \
+                          --code-coverage \
+                          --output-dir test-results \
+                          --result-format junit \
+                          --wait 30
+                    '''
+                }
+                // Publish test results in Jenkins
+                junit testResults: 'test-results/junit/*.xml', allowEmptyResults: false
+                echo "ALL APEX UNIT TESTS PASSED — RAJAT KA CODE BULLETPROOF"
+            }
+            post {
+                always {
+                    // Archive code coverage and test results
+                    archiveArtifacts artifacts: 'test-results/**', allowEmptyArchive: true
+                }
+                failure {
+                    error "UNIT TESTS FAILED — RAJAT FIX KAR, WARNA MENTOR GAALI DEGA"
+                }
             }
         }
 
-        stage('Export Test Report') {
-            steps {
-                powershell 'sf apex run test report --target-org CI_SCRATCH --result-format junit --output-dir test-results'
-                junit 'test-results/test-result-*.xml'
-                echo "✅ JUnit test report exported and published"
+        stage('Deploy to Dev Hub') {
+            when {
+                expression { currentBuild.result == null || currentBuild.result == 'SUCCESS' }
             }
-        }
-
-        stage('Delete Scratch Org') {
             steps {
-                powershell 'sf org delete scratch --target-org CI_SCRATCH --no-prompt'
-                echo "✅ Scratch org deleted after test"
+                bat '''
+                    sf project deploy start \
+                      --manifest manifest/package.xml \
+                      --target-org MyDevHub \
+                      --test-level RunLocalTests \
+                      --wait 60 \
+                      --verbose
+                '''
+                echo "12 NOV 2025 — DATA + CODE DEV HUB MEIN LIVE HO GAYA — RAJAT WON BIG TIME"
             }
         }
     }
 
     post {
         success {
-            echo "🎉 Pipeline successful — all stages passed"
+            echo "RAJAT NE CI/CD + UNIT TESTING COMPLETE KIYA — DEV HUB MEIN SAB KUCH LIVE — MENTOR SHOCK + RESPECT ++"
         }
         failure {
-            echo "❌ Pipeline failed — check logs above"
+            echo "PIPELINE FAIL HO GAYA — RAJAT CHECK KAR, JALDI FIX KAR!"
         }
         always {
-            powershell 'sf org logout --target-org DevHub --no-prompt || echo "Logout failed or already done"'
-            echo "👋 Logged out from Dev Hub"
+            bat 'sf org logout --target-org MyDevHub --no-prompt || true'
+            cleanWs() // Optional: clean workspace
         }
     }
 }
-
-
-
