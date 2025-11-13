@@ -2,12 +2,11 @@ pipeline {
     agent any
 
     environment {
-        PATH = "C:\\Users\\Rajat Singh\\AppData\\Roaming\\npm;${env.PATH}"
-
-        // Secure Jenkins credentials
-        HUB_ORG_DH                   = credentials('HUB_ORG_DH')                   // Dev Hub username/email
-        SFDC_HOST_DH                 = credentials('SFDC_HOST_DH')                 // e.g., https://login.salesforce.com
-        CONNECTED_APP_CONSUMER_KEY_DH = credentials('CONNECTED_APP_CONSUMER_KEY_DH') // Connected App consumer key
+        NODE_HOME = "C:\\Users\\Rajat Singh\\AppData\\Roaming\\npm"
+        PATH = "${env.NODE_HOME};${env.PATH}"
+        HUB_ORG_DH = credentials('HUB_ORG_DH')                     // Dev Hub username/email
+        SFDC_HOST_DH = credentials('SFDC_HOST_DH')                 // e.g. https://login.salesforce.com
+        CONNECTED_APP_CONSUMER_KEY_DH = credentials('CONNECTED_APP_CONSUMER_KEY_DH')
     }
 
     stages {
@@ -15,76 +14,85 @@ pipeline {
         stage('Checkout') {
             steps {
                 checkout scm
-                echo "CODE CHECKED OUT FROM GITHUB - BRANCH: ${env.BRANCH_NAME}"
+                echo "✅ Code checked out from GitHub — branch: ${env.BRANCH_NAME}"
             }
         }
 
         stage('Login to Dev Hub') {
             steps {
-                withCredentials([file(credentialsId: 'sfdc-jwt-key', variable: 'key')]) {
-                    bat """
-                        sf org login jwt ^
-                          --client-id %CONNECTED_APP_CONSUMER_KEY_DH% ^
-                          --username %HUB_ORG_DH% ^
-                          --jwt-key-file "%key%" ^
-                          --instance-url %SFDC_HOST_DH% ^
-                          --alias DevHub
+                withCredentials([file(credentialsId: 'sfdc-jwt-key', variable: 'JWT_KEY')]) {
+                    powershell """
+                        sf org login jwt `
+                            --client-id $env:CONNECTED_APP_CONSUMER_KEY_DH `
+                            --username $env:HUB_ORG_DH `
+                            --jwt-key-file "$env:JWT_KEY" `
+                            --instance-url $env:SFDC_HOST_DH `
+                            --alias DevHub `
+                            --set-default-dev-hub
                     """
-                    bat 'sf config set target-org DevHub --global'
-                    echo "DEV HUB LOGIN SUCCESSFUL - ALIAS SET: DevHub"
+                    echo "✅ Dev Hub login successful - alias set: DevHub"
                 }
             }
         }
 
         stage('Create Scratch Org') {
             steps {
-                bat 'sf org create scratch --definition-file config/project-scratch-def.json --alias CI_SCRATCH --set-default --duration-days 1 --wait 10'
-                echo "SCRATCH ORG CREATED SUCCESSFULLY - ALIAS: CI_SCRATCH"
+                powershell """
+                    sf org create scratch `
+                        --definition-file config/project-scratch-def.json `
+                        --alias CI_SCRATCH `
+                        --target-dev-hub DevHub `
+                        --set-default `
+                        --duration-days 1 `
+                        --wait 10
+                """
+                echo "✅ Scratch org created successfully - alias: CI_SCRATCH"
             }
         }
 
         stage('Deploy Code to Scratch Org') {
             steps {
-                bat 'sf project deploy start --manifest manifest/package.xml --target-org CI_SCRATCH --wait 30'
-                echo "DEPLOYMENT SUCCESSFUL TO SCRATCH ORG"
+                powershell 'sf project deploy start --manifest manifest/package.xml --target-org CI_SCRATCH --wait 60'
+                echo "✅ Code deployed to scratch org"
             }
         }
 
-        stage('Run Apex Unit Tests (Human Output)') {
+        stage('Run Apex Unit Tests') {
             steps {
-                bat 'sf apex run test --target-org CI_SCRATCH --result-format human --code-coverage --wait 10 --output-dir test-results'
-                echo "UNIT TESTS EXECUTED - SEE test-results DIRECTORY"
+                powershell 'sf apex run test --target-org CI_SCRATCH --test-level RunLocalTests --wait 20'
+                echo "✅ Apex unit tests executed"
             }
         }
 
-        stage('Export Test Report (JUnit Format)') {
+        stage('Export Test Report') {
             steps {
-                bat 'sf apex run test --target-org CI_SCRATCH --result-format junit --code-coverage --wait 10 --output-dir test-results'
+                powershell 'sf apex run test report --target-org CI_SCRATCH --result-format junit --output-dir test-results'
                 junit 'test-results/test-result-*.xml'
-                echo "TEST RESULTS PUBLISHED IN JENKINS"
+                echo "✅ JUnit test report exported and published"
             }
         }
 
         stage('Delete Scratch Org') {
             steps {
-                bat 'sf org delete scratch --target-org CI_SCRATCH --no-prompt'
-                echo "SCRATCH ORG CLEANUP COMPLETED"
+                powershell 'sf org delete scratch --target-org CI_SCRATCH --no-prompt'
+                echo "✅ Scratch org deleted after test"
             }
         }
     }
 
     post {
         success {
-            echo "PIPELINE SUCCESSFUL: CODE DEPLOYED, TESTED, AND CLEANED UP"
+            echo "🎉 Pipeline successful — all stages passed"
         }
         failure {
-            echo "PIPELINE FAILED - CHECK STAGE LOGS ABOVE"
+            echo "❌ Pipeline failed — check logs above"
         }
         always {
-            bat 'sf org logout --target-org DevHub --no-prompt || true'
-            echo "LOGGED OUT FROM DEV HUB"
+            powershell 'sf org logout --target-org DevHub --no-prompt || echo "Logout failed or already done"'
+            echo "👋 Logged out from Dev Hub"
         }
     }
 }
+
 
 
