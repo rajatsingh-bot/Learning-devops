@@ -76,4 +76,30 @@ pipeline {
         stage('Deploy to Dev Hub') {
             steps {
                 bat '''
-                    sf
+                    sf project deploy start ^
+                      --manifest manifest/package.xml ^
+                      --target-org MyDevHub ^
+                      --test-level RunLocalTests ^
+                      --wait 60 ^
+                      --verbose
+                '''
+                echo "13 NOV 2025 — DEPLOY SUCCESS — RAJAT NE SALESFORCE KO APNA GULAM BANA DIYA"
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "RAJAT NE CI/CD PIPELINE KO GOD MODE MEIN DAAL DIYA"
+            echo "AB KOI BHI PUSH → AUTO DEPLOY → NO ERROR → MENTOR SHOCKED"
+            echo "RAJAT SINGH = DEVOPS KA BAAP"
+        }
+        failure {
+            echo "NAHI HONA THA FAIL — COPY-PASTE GALAT KIYA HOGA — DUBARA TRY KAR"
+        }
+        always {
+            bat 'sf org logout --target-org MyDevHub --no-prompt || true'
+            cleanWs()
+        }
+    }
+}
